@@ -7,9 +7,46 @@ jest.setTimeout(30000)
 
 moduleIntegrationTestRunner<IPaymentModuleService>({
   moduleName: Modules.PAYMENT,
+  moduleOptions: {
+    apiKey: "test",
+    environmentHandle: "test",
+    webhookSecret: "test",
+    endpoint: "test",
+  },
   testSuite: ({ service }) => {
     describe("Payment Module Service", () => {
       describe("providers", () => {
+        it("should load the system and medusa payments providers by default", async () => {
+          const paymentProviders = await service.listPaymentProviders()
+          expect(paymentProviders).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                id: "pp_system_default",
+              }),
+              expect.objectContaining({
+                id: "pp_medusa-payments_default",
+              }),
+            ])
+          )
+        })
+
+        it("should create a payment session successfully", async () => {
+          const paymentCollection = await service.createPaymentCollections({
+            currency_code: "USD",
+            amount: 200,
+          })
+
+          const paymentSession = await service.createPaymentSession(
+            paymentCollection.id,
+            {
+              provider_id: "pp_medusa-payments_default",
+              amount: 200,
+              currency_code: "USD",
+              data: {},
+            }
+          )
+        })
+
         it("should load payment plugins", async () => {
           let error = await service
             .createPaymentCollections([

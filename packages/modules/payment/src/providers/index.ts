@@ -1,1 +1,2 @@
-export { default as SystemPaymentProvider } from "./system"
+export { SystemPaymentProvider } from "./system"
+export { MedusaPaymentsProvider } from "./payment-medusa"

@@ -32,7 +32,7 @@ import {
   PaymentSessionStatus,
 } from "@medusajs/framework/utils"
 
-export class SystemProviderService extends AbstractPaymentProvider {
+export class SystemPaymentProvider extends AbstractPaymentProvider {
   static identifier = "system"
 
   async getStatus(_): Promise<string> {
@@ -107,5 +107,3 @@ export class SystemProviderService extends AbstractPaymentProvider {
     return { action: PaymentActions.NOT_SUPPORTED }
   }
 }
-
-export default SystemProviderService
