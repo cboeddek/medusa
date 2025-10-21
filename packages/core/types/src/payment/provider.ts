@@ -160,6 +160,12 @@ export interface RetrievePaymentInput extends PaymentProviderInput {}
  */
 export interface CancelPaymentInput extends PaymentProviderInput {}
 
+export interface RetrieveAccountHolderInput extends PaymentProviderInput {
+  /**
+   * The ID of the account holder to retrieve.
+   */
+  id: string
+}
 /**
  * The data to create an account holder.
  */
@@ -290,6 +296,17 @@ export interface RetrievePaymentOutput extends PaymentProviderOutput {}
 export interface CancelPaymentOutput extends PaymentProviderOutput {}
 
 /**
+ * The result of retrieving an account holder in the third-party payment provider. The `data`
+ * property is stored as-is in Medusa's account holder's `data` property.
+ */
+export interface RetrieveAccountHolderOutput extends PaymentProviderOutput {
+  /**
+   * The ID of the account holder in the payment provider.
+   */
+  id: string
+}
+
+/**
  * The result of creating an account holder in the third-party payment provider. The `data`
  * property is stored as-is in Medusa's account holder's `data` property.
  */
@@ -404,6 +421,40 @@ export interface IPaymentProvider {
   retrievePayment(data: RetrievePaymentInput): Promise<RetrievePaymentOutput>
 
   cancelPayment(data: CancelPaymentInput): Promise<CancelPaymentOutput>
+
+  /**
+   * This method is used when retrieving an account holder in Medusa, allowing you to retrieve
+   * the equivalent account in the third-party payment provider. An account holder is useful to
+   * later save payment methods, such as credit cards, for a customer in the
+   * third-party payment provider using the {@link savePaymentMethod} method.
+   *
+   * @param data - Input data including the details of the account holder to retrieve.
+   * @returns The retrieved account holder. If an error occurs, throw it.
+   *
+   * @since 2.11.0
+   *
+   * @example
+   * import { MedusaError } from "@medusajs/framework/utils"
+   *
+   * class MyPaymentProviderService extends AbstractPaymentProvider<
+   *  Options
+   * > {
+   *  async retrieveAccountHolder({ id }: RetrieveAccountHolderInput) {
+   *
+   *   // assuming you have a client that retrieves the account holder
+   *   const providerAccountHolder = await this.client.retrieveAccountHolder({
+   *     id
+   *   })
+   *
+   *   return {
+   *     id: providerAccountHolder.id,
+   *     data: providerAccountHolder as unknown as Record<string, unknown>
+   *   }
+   * }
+   */
+  retrieveAccountHolder?(
+    data: RetrieveAccountHolderInput
+  ): Promise<RetrieveAccountHolderOutput>
 
   /**
    * This method is used when creating an account holder in Medusa, allowing you to create

@@ -7,6 +7,8 @@ import {
   CancelPaymentOutput,
   CapturePaymentInput,
   CapturePaymentOutput,
+  RetrieveAccountHolderInput,
+  RetrieveAccountHolderOutput,
   CreateAccountHolderInput,
   CreateAccountHolderOutput,
   DeleteAccountHolderInput,
@@ -45,6 +47,18 @@ import {
   getSmallestUnit,
 } from "../utils/get-smallest-unit"
 
+export class MedusaPaymentsError extends Error {
+  public statusCode: number
+  public errorType?: string
+
+  constructor(statusCode: number, errorType?: string, message?: string) {
+    super(message)
+
+    this.statusCode = statusCode
+    this.errorType = errorType
+  }
+}
+
 // TODO: Handle errors and retries (similar to Stripe)
 export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymentsOptions> {
   static identifier = "medusa-payments"
@@ -67,15 +81,30 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     this.stripeClient = new stripe(options.apiKey)
   }
 
-  request<T>(url: string, options: RequestInit): Promise<T> {
+  request<T>(
+    url: string,
+    options: Omit<RequestInit, "body"> & { body?: object }
+  ): Promise<T> {
     return fetch(`${this.options_.endpoint}${url}`, {
       ...options,
+      body: options.body ? JSON.stringify(options.body) : undefined,
       headers: {
         ...options.headers,
+        "x-medusa-environment-handle": this.options_.environmentHandle,
         "Content-Type": "application/json",
         Authorization: `Basic ${this.options_.apiKey}`,
       },
-    }).then((res) => res.json())
+    }).then((res) => {
+      if (!res.ok) {
+        throw new MedusaPaymentsError(
+          res.status,
+          res.statusText,
+          `Request to ${url} failed with status ${res.status}: ${res.statusText}`
+        )
+      }
+
+      return res.json()
+    })
   }
 
   normalizePaymentParameters(
@@ -85,7 +114,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
       description: extra?.payment_description ?? "",
       capture_method: extra?.capture_method as "automatic" | "manual",
       setup_future_usage: extra?.setup_future_usage,
-      payment_method_types: extra?.payment_method_types ?? "",
+      payment_method_types: extra?.payment_method_types,
       payment_method_data: extra?.payment_method_data,
       payment_method_options: extra?.payment_method_options,
       automatic_payment_methods: extra?.automatic_payment_methods,
@@ -181,7 +210,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     const payment = await this.executeWithRetry(() => {
       return this.request<{ payment: any }>("/payments", {
         method: "POST",
-        body: JSON.stringify(intentRequest),
+        body: intentRequest,
       }).then((data) => data.payment)
     })
 
@@ -213,9 +242,9 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     const res = await this.executeWithRetry(() => {
       return this.request<{ payment: any }>(`/payments/${id}/cancel`, {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           idempotency_key: context?.idempotency_key,
-        }),
+        },
       }).then((data) => data.payment)
     })
 
@@ -231,9 +260,9 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     const intent = await this.executeWithRetry(() => {
       return this.request<{ payment: any }>(`/payments/${id}/capture`, {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           idempotency_key: context?.idempotency_key,
-        }),
+        },
       }).then((data) => data.payment)
     })
 
@@ -256,17 +285,17 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
 
     const currencyCode = data?.currency as string
 
-    await this.executeWithRetry(() => {
+    const response = await this.executeWithRetry(() => {
       return this.request<{ refund: any }>(`/payments/${id}/refund`, {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           amount: getSmallestUnit(amount, currencyCode),
           idempotency_key: context?.idempotency_key,
-        }),
+        },
       }).then((data) => data.refund)
     })
 
-    return { data }
+    return { data: response as unknown as Record<string, unknown> }
   }
 
   async retrievePayment({
@@ -301,15 +330,36 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
 
     const sessionData = await this.executeWithRetry(() => {
       return this.request<{ payment: any }>(`/payments/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({
+        method: "POST",
+        body: {
           amount: amountNumeric,
           idempotency_key: context?.idempotency_key,
-        }),
+        },
       }).then((data) => data.payment)
     })
 
     return this.getStatus(sessionData) as unknown as UpdatePaymentOutput
+  }
+
+  async retrieveAccountHolder({
+    id,
+  }: RetrieveAccountHolderInput): Promise<RetrieveAccountHolderOutput> {
+    if (!id) {
+      throw new Error(
+        "No account holder ID provided while getting account holder"
+      )
+    }
+
+    const res = await this.executeWithRetry(() => {
+      return this.request<{ account_holder: any }>(`/account-holders/${id}`, {
+        method: "GET",
+      }).then((data) => data.account_holder)
+    })
+
+    return {
+      id: res.id,
+      data: res as unknown as Record<string, unknown>,
+    }
   }
 
   async createAccountHolder({
@@ -341,7 +391,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     const accountHolder = await this.executeWithRetry(() => {
       return this.request<{ account_holder: any }>(`/account-holders`, {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           email: customer.email,
           name:
             customer.company_name ||
@@ -350,7 +400,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
           phone: customer.phone as string | undefined,
           ...shipping,
           idempotency_key: idempotency_key,
-        }),
+        },
       }).then((data) => data.account_holder)
     })
 
@@ -396,7 +446,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
         `/account-holders/${accountHolderId}`,
         {
           method: "POST",
-          body: JSON.stringify({
+          body: {
             email: customer.email,
             name:
               customer.company_name ||
@@ -407,7 +457,7 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
             phone: customer.phone as string | undefined,
             ...shipping,
             idempotency_key: idempotency_key,
-          }),
+          },
         }
       ).then((data) => data.account_holder)
     })
@@ -480,11 +530,11 @@ export class MedusaPaymentsProvider extends AbstractPaymentProvider<MedusaPaymen
     const paymentMethodSession = await this.executeWithRetry(() => {
       return this.request<{ payment_method_session: any }>(`/payment-methods`, {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           account_holder_id: accountHolderId,
           ...data,
           idempotency_key: context?.idempotency_key,
-        }),
+        },
       }).then((data) => data.payment_method_session)
     })
 

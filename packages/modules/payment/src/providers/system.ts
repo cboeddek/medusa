@@ -7,6 +7,8 @@ import {
   CancelPaymentOutput,
   CapturePaymentInput,
   CapturePaymentOutput,
+  RetrieveAccountHolderInput,
+  RetrieveAccountHolderOutput,
   CreateAccountHolderInput,
   CreateAccountHolderOutput,
   DeleteAccountHolderInput,
@@ -79,6 +81,12 @@ export class SystemPaymentProvider extends AbstractPaymentProvider {
     input: CapturePaymentInput
   ): Promise<CapturePaymentOutput> {
     return { data: {} }
+  }
+
+  async retrieveAccountHolder(
+    input: RetrieveAccountHolderInput
+  ): Promise<RetrieveAccountHolderOutput> {
+    return { id: input.id }
   }
 
   async createAccountHolder(
